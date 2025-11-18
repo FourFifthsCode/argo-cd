@@ -312,3 +312,15 @@ local_resource(
     allow_parallel=True,
 )
 
+# keycloak
+k8s_yaml(kustomize('manifests/dev-tilt/keycloak'))
+
+k8s_resource(
+    workload='keycloak',
+    objects=[
+        'keycloak:namespace',
+    ],
+    port_forwards=[
+        '8180:8080',
+    ],
+)
