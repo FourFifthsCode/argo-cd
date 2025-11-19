@@ -32,3 +32,8 @@ cmd/argocd-server/argocd-server
 
 # ignore generated `.argocd-helm-dep-up` marker file; this should not be committed to git
 reposerver/repository/testdata/**/.argocd-helm-dep-up
+# Local TLS certificates
+manifests/dev-tilt/keycloak/certs/
+manifests/dev-tilt/argocd-cm-patch.yaml
+manifests/dev-tilt/certs/
+.tilt/

@@ -19,6 +19,8 @@ spec:
               value: https://argocd-server
             - name: ARGOCD_E2E_YARN_HOST
               value: "0.0.0.0"
+            - name: DANGEROUSLY_DISABLE_HOST_CHECK
+              value: "true"
           ports:
             - containerPort: 4000
               name: http

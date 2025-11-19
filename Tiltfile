@@ -48,15 +48,37 @@ code_deps = [
     'go.mod',
     'go.sum',
 ]
+# dev setup - ensures DNS, TLS, CoreDNS, and ArgoCD CA are configured
+# MUST run before kustomize builds (which need the certs)
+local_resource(
+    'dev-setup',
+    'hack/dev-minikube-setup.sh setup',
+    auto_init=True,
+    allow_parallel=True,
+    labels=['setup']
+)
+
 local_resource(
     'build',
     'CGO_ENABLED=0 GOOS=linux GOARCH=' + arch + ' go build -gcflags="all=-N -l" -mod=readonly -o .tilt-bin/argocd_linux cmd/main.go',
     deps = code_deps,
     allow_parallel=True,
+    labels=['argocd']
 )
 
-# deploy the argocd manifests
-k8s_yaml(kustomize('manifests/dev-tilt'))
+# deploy the argocd manifests - depends on dev-setup to ensure certs exist
+local_resource(
+    'kustomize-build',
+    'kustomize build manifests/dev-tilt > .tilt/argocd.yaml && kustomize build manifests/dev-tilt/keycloak > .tilt/keycloak.yaml',
+    deps=['manifests/dev-tilt', 'manifests/dev-tilt/keycloak'],
+    resource_deps=['dev-setup'],
+    auto_init=True,
+    allow_parallel=True,
+    labels=['setup']
+)
+
+k8s_yaml('.tilt/argocd.yaml')
+k8s_yaml('.tilt/keycloak.yaml')
 
 # build dev image
 docker_build_with_restart(
@@ -123,7 +145,8 @@ k8s_resource(
         '9345:2345',
         '8083:8083'
     ],
-    resource_deps=['build']
+    resource_deps=['build'],
+    labels=['argocd']
 )
 
 # track crds
@@ -134,7 +157,8 @@ k8s_resource(
         'applicationsets.argoproj.io:customresourcedefinition',
         'appprojects.argoproj.io:customresourcedefinition',
         'argocd:namespace'
-    ]
+    ],
+    labels=['argocd']
 )
 
 # track argocd-repo-server resources and port forward
@@ -149,7 +173,8 @@ k8s_resource(
         '9346:2345',
         '8084:8084'
     ],
-    resource_deps=['build']
+    resource_deps=['build'],
+    labels=['argocd']
 )
 
 # track argocd-redis resources and port forward
@@ -164,7 +189,8 @@ k8s_resource(
     port_forwards=[
         '6379:6379',
     ],
-    resource_deps=['build']
+    resource_deps=['build'],
+    labels=['argocd']
 )
 
 # track argocd-applicationset-controller resources
@@ -183,7 +209,8 @@ k8s_resource(
         '8085:8080',
         '7000:7000'
     ],
-    resource_deps=['build']
+    resource_deps=['build'],
+    labels=['argocd']
 )
 
 # track argocd-application-controller resources
@@ -201,7 +228,8 @@ k8s_resource(
         '9348:2345',
         '8086:8082',
     ],
-    resource_deps=['build']
+    resource_deps=['build'],
+    labels=['argocd']
 )
 
 # track argocd-notifications-controller resources
@@ -219,7 +247,8 @@ k8s_resource(
         '9349:2345',
         '8087:9001',
     ],
-    resource_deps=['build']
+    resource_deps=['build'],
+    labels=['argocd']
 )
 
 # track argocd-dex-server resources
@@ -231,7 +260,8 @@ k8s_resource(
         'argocd-dex-server:role',
         'argocd-dex-server:rolebinding',
     ],
-    resource_deps=['build']
+    resource_deps=['build'],
+    labels=['argocd']
 )
 
 # track argocd-commit-server resources
@@ -246,7 +276,8 @@ k8s_resource(
         '8088:8087',
         '8089:8086',
     ],
-    resource_deps=['build']
+    resource_deps=['build'],
+    labels=['argocd']
 )
 
 # ui dependencies
@@ -259,6 +290,7 @@ local_resource(
         'ui/yarn.lock',
     ],
     allow_parallel=True,
+    labels=['argocd']
 )
 
 # docker for ui
@@ -271,16 +303,21 @@ docker_build(
     live_update=[
         sync('ui', '/app/ui'),
         run('sh -c "cd /app/ui && yarn install"', trigger=['/app/ui/package.json', '/app/ui/yarn.lock']),
-    ],
+    ]
 )
 
 # track argocd-ui resources and port forward
 k8s_resource(
     workload='argocd-ui',
+    objects=[
+        'keycloak-tls:secret:argocd',
+        'argocd-ui:ingress:argocd',
+    ],
     port_forwards=[
         '4000:4000',
     ],
     resource_deps=['node-modules'],
+    labels=['argocd']
 )
 
 # linting
@@ -289,7 +326,8 @@ local_resource(
     'make lint-local',
     deps = code_deps,
     allow_parallel=True,
-    resource_deps=['vendor']
+    resource_deps=['vendor'],
+    labels=['tools']
 )
 
 local_resource(
@@ -300,6 +338,7 @@ local_resource(
     ],
     allow_parallel=True,
     resource_deps=['node-modules'],
+    labels=['tools']
 )
 
 local_resource(
@@ -310,17 +349,37 @@ local_resource(
         'go.sum',
     ],
     allow_parallel=True,
+    labels=['tools']
 )
 
-# keycloak
-k8s_yaml(kustomize('manifests/dev-tilt/keycloak'))
+local_resource(
+    'minkube-tunnel',
+    serve_cmd='minikube tunnel',
+    allow_parallel=True,
+    labels=['setup']
+)
 
 k8s_resource(
     workload='keycloak',
     objects=[
-        'keycloak:namespace',
+        'keycloak-tls:secret:keycloak',
+        'keycloak-realm-config:configmap:keycloak',
+        'keycloak:ingress:keycloak',
+        'oidc-config:secret:argocd'
     ],
     port_forwards=[
         '8180:8080',
+    ],
+    resource_deps=[
+        'postgres',
+    ],
+    labels=['keycloak'],
+)
+
+k8s_resource(
+    workload='postgres',
+    labels=['keycloak'],
+    objects=[
+        'keycloak:namespace',
     ],
 )

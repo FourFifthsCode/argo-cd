@@ -4,9 +4,23 @@ namespace: argocd
 resources:
   - namespace.yaml
   - ui-deployment.yaml
+  - ui-service.yaml
+  - oidc-secret.yaml
+  - argocd-ingress.yaml
   - ../cluster-install-with-hydrator
 
+secretGenerator:
+  - name: keycloak-tls
+    type: kubernetes.io/tls
+    files:
+      - tls.crt=keycloak/certs/tls.crt
+      - tls.key=keycloak/certs/tls.key
+    options:
+      disableNameSuffixHash: true
+
 patches:
+  - path: argocd-cm-patch.yaml
+
   - target:
       group: apps
       version: v1
@@ -139,3 +153,4 @@ patches:
         value: argocd-job
       - op: remove
         path: /spec/template/spec/initContainers/0/securityContext
+

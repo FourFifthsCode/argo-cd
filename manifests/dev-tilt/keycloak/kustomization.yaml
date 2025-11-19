@@ -5,4 +5,21 @@ namespace: keycloak
 
 resources:
   - namespace.yaml
-  - https://raw.githubusercontent.com/keycloak/keycloak-quickstarts/refs/heads/main/kubernetes/keycloak.yaml
+  - keycloak.yaml
+  - ingress.yaml
+
+secretGenerator:
+  - name: keycloak-tls
+    type: kubernetes.io/tls
+    files:
+      - tls.crt=certs/tls.crt
+      - tls.key=certs/tls.key
+    options:
+      disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: keycloak-realm-config
+    files:
+      - argocd-realm.json
+    options:
+      disableNameSuffixHash: true

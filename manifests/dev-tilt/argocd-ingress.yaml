@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-ui
+  namespace: argocd
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - argocd.minikube.test
+      secretName: keycloak-tls # Reusing the keycloak-tls secret for argocd.minikube.test
+  rules:
+    - host: argocd.minikube.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-ui
+                port:
+                  number: 4000
+

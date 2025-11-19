@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - keycloak.minikube.test
+      secretName: keycloak-tls
+  rules:
+    - host: keycloak.minikube.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8080
