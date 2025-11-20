@@ -23,7 +23,7 @@ data:
     issuer: https://keycloak.minikube.test/realms/argocd
     clientID: argocd
     clientSecret: aJZkkEAsql2HjF8LMw5w9Sap5FDi88CA
-    requestedScopes: ["openid", "profile", "email"]
+    requestedScopes: ["openid", "profile", "email", "groups"]
     rootCA: |
 $CA_CONTENT
 EOF

@@ -70,7 +70,8 @@
         "uma_authorization"
       ],
       "groups": [
-        "/ArgoCDAdmins"
+        "/ArgoCDAdmins",
+        "/role:admin"
       ]
     }
   ],
@@ -78,6 +79,10 @@
     {
       "name": "ArgoCDAdmins",
       "path": "/ArgoCDAdmins"
+    },
+    {
+      "name": "role:admin",
+      "path": "/role:admin"
     }
   ],
   "roles": {
