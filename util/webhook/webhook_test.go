@@ -186,11 +186,11 @@ func TestAzureDevOpsCommitEvent(t *testing.T) {
 // one source matches.
 func TestGitHubCommitEvent_MultiSource_Refresh(t *testing.T) {
 	hook := test.NewGlobal()
-	var patched bool
+	var patchData []byte
 	reaction := func(action kubetesting.Action) (handled bool, ret runtime.Object, err error) {
 		patchAction := action.(kubetesting.PatchAction)
 		assert.Equal(t, "app-to-refresh", patchAction.GetName())
-		patched = true
+		patchData = patchAction.GetPatch()
 		return true, nil, nil
 	}
 	h := NewMockHandler(&reactorDef{"patch", "applications", reaction}, []string{}, &v1alpha1.Application{
@@ -234,9 +234,16 @@ func TestGitHubCommitEvent_MultiSource_Refresh(t *testing.T) {
 	close(h.queue)
 	h.Wait()
 	assert.Equal(t, http.StatusOK, w.Code)
-	expectedLogResult := "Requested app 'app-to-refresh' refresh"
-	assert.Equal(t, expectedLogResult, hook.LastEntry().Message)
-	assert.True(t, patched)
+
+	// Verify that only refresh annotation is set, NOT hydrate annotation for sources changes
+	var patchMap map[string]any
+	err = json.Unmarshal(patchData, &patchMap)
+	require.NoError(t, err)
+	metadata := patchMap["metadata"].(map[string]any)
+	annotations := metadata["annotations"].(map[string]any)
+	assert.Equal(t, "normal", annotations["argocd.argoproj.io/refresh"])
+	_, hasHydrate := annotations["argocd.argoproj.io/hydrate"]
+	assert.False(t, hasHydrate, "sources changes should NOT trigger hydration")
 	hook.Reset()
 }
 
@@ -338,14 +345,13 @@ func TestGitHubCommitEvent_AppsInOtherNamespaces(t *testing.T) {
 	hook.Reset()
 }
 
-// TestGitHubCommitEvent_Hydrate makes sure that a webhook will hydrate an app when dry source changed.
-func TestGitHubCommitEvent_Hydrate(t *testing.T) {
-	hook := test.NewGlobal()
-	var patched bool
+// TestGitHubCommitEvent_Hydrate_DrySource tests that a webhook will refresh and hydrate an app when dry source changed.
+func TestGitHubCommitEvent_Hydrate_DrySource(t *testing.T) {
+	var patchData []byte
 	reaction := func(action kubetesting.Action) (handled bool, ret runtime.Object, err error) {
 		patchAction := action.(kubetesting.PatchAction)
 		assert.Equal(t, "app-to-hydrate", patchAction.GetName())
-		patched = true
+		patchData = patchAction.GetPatch()
 		return true, nil, nil
 	}
 	h := NewMockHandler(&reactorDef{"patch", "applications", reaction}, []string{}, &v1alpha1.Application{
@@ -391,26 +397,24 @@ func TestGitHubCommitEvent_Hydrate(t *testing.T) {
 	close(h.queue)
 	h.Wait()
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.True(t, patched)
 
-	logMessages := make([]string, 0, len(hook.Entries))
-	for _, entry := range hook.Entries {
-		logMessages = append(logMessages, entry.Message)
-	}
-
-	assert.Contains(t, logMessages, "webhook trigger refresh app to hydrate 'app-to-hydrate'")
-	assert.NotContains(t, logMessages, "webhook trigger refresh app to hydrate 'app-to-ignore'")
-
-	hook.Reset()
+	// Verify that both refresh and hydrate annotations are set for drySource changes
+	var patchMap map[string]any
+	err = json.Unmarshal(patchData, &patchMap)
+	require.NoError(t, err)
+	metadata := patchMap["metadata"].(map[string]any)
+	annotations := metadata["annotations"].(map[string]any)
+	assert.Equal(t, "normal", annotations["argocd.argoproj.io/refresh"])
+	assert.Equal(t, "normal", annotations["argocd.argoproj.io/hydrate"])
 }
 
+// TestGitHubCommitEvent_SyncSourceRefresh tests that syncSource changes trigger refresh WITHOUT hydration.
 func TestGitHubCommitEvent_SyncSourceRefresh(t *testing.T) {
-	hook := test.NewGlobal()
-	var patched bool
+	var patchData []byte
 	reaction := func(action kubetesting.Action) (handled bool, ret runtime.Object, err error) {
 		patchAction := action.(kubetesting.PatchAction)
 		assert.Equal(t, "app-to-refresh", patchAction.GetName())
-		patched = true
+		patchData = patchAction.GetPatch()
 		return true, nil, nil
 	}
 	h := NewMockHandler(&reactorDef{"patch", "applications", reaction}, []string{}, &v1alpha1.Application{
@@ -447,17 +451,16 @@ func TestGitHubCommitEvent_SyncSourceRefresh(t *testing.T) {
 	close(h.queue)
 	h.Wait()
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.True(t, patched)
 
-	logMessages := make([]string, 0, len(hook.Entries))
-	for _, entry := range hook.Entries {
-		logMessages = append(logMessages, entry.Message)
-	}
-
-	assert.Contains(t, logMessages, "webhook trigger refresh app from syncSource 'app-to-refresh'")
-	// Should not hydrate the app
-	assert.NotContains(t, logMessages, "hydrate 'app-to-refresh'")
-	hook.Reset()
+	// Verify that only refresh annotation is set, NOT hydrate annotation for syncSource changes
+	var patchMap map[string]any
+	err = json.Unmarshal(patchData, &patchMap)
+	require.NoError(t, err)
+	metadata := patchMap["metadata"].(map[string]any)
+	annotations := metadata["annotations"].(map[string]any)
+	assert.Equal(t, "normal", annotations["argocd.argoproj.io/refresh"])
+	_, hasHydrate := annotations["argocd.argoproj.io/hydrate"]
+	assert.False(t, hasHydrate, "syncSource changes should NOT trigger hydration")
 }
 
 // TestGitHubCommitEvent_SyncSourceRefresh_FileFiltering tests that syncSource webhooks

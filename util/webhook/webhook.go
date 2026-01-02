@@ -366,55 +366,59 @@ func (a *ArgoCDWebhookHandler) HandleEvent(payload any) {
 			continue
 		}
 		for _, app := range filteredApps {
+			needsRefresh := false
+			hydrate := false
+
+			// if source hydrator is configured, refresh the app if the drySource or syncSource has changed
 			if app.Spec.SourceHydrator != nil {
+				// check if the drySource has changed
 				drySource := app.Spec.SourceHydrator.GetDrySource()
-				syncSource := app.Spec.SourceHydrator.GetSyncSource()
-				if sourceRevisionHasChanged(drySource, revision, touchedHead) && sourceUsesURL(drySource, webURL, repoRegexp) { // handle webhook for drySource
+				if sourceRevisionHasChanged(drySource, revision, touchedHead) && sourceUsesURL(drySource, webURL, repoRegexp) {
 					refreshPaths := path.GetAppRefreshPaths(&app, drySource)
 					if path.AppFilesHaveChanged(refreshPaths, changedFiles) {
-						namespacedAppInterface := a.appClientset.ArgoprojV1alpha1().Applications(app.Namespace)
-						log.Infof("webhook trigger refresh app to hydrate '%s'", app.Name)
-						_, err = argo.RefreshApp(namespacedAppInterface, app.Name, v1alpha1.RefreshTypeNormal, true)
-						if err != nil {
-							log.Warnf("Failed to hydrate app '%s' for controller reprocessing: %v", app.Name, err)
-							continue
-						}
+						needsRefresh = true
+						hydrate = true
 					}
-				} else if sourceRevisionHasChanged(syncSource, revision, touchedHead) && sourceUsesURL(syncSource, webURL, repoRegexp) { // handle webhook for syncSource
-					if err := a.storePreviouslyCachedManifests(&app, change, trackingMethod, appInstanceLabelKey, installationID); err != nil {
-						log.Warnf("Failed to store cached manifests of previous revision for app '%s': %v", app.Name, err)
-					}
-
+				}
+				// check if the syncSource has changed
+				syncSource := app.Spec.SourceHydrator.GetSyncSource()
+				if !needsRefresh && sourceRevisionHasChanged(syncSource, revision, touchedHead) && sourceUsesURL(syncSource, webURL, repoRegexp) {
 					refreshPaths := path.GetAppRefreshPaths(&app, syncSource)
 					if path.AppFilesHaveChanged(refreshPaths, changedFiles) {
-						// syncSource changes trigger sync (no hydration needed), but still filter irrelevant files
-						namespacedAppInterface := a.appClientset.ArgoprojV1alpha1().Applications(app.Namespace)
 						log.Infof("webhook trigger refresh app from syncSource '%s'", app.Name)
-						_, err = argo.RefreshApp(namespacedAppInterface, app.Name, v1alpha1.RefreshTypeNormal, true)
-						if err != nil {
-							log.Warnf("Failed to refresh app '%s' after syncSource change: %v", app.Name, err)
-							continue
+						needsRefresh = true
+					}
+				}
+			} else {
+				// for apps without SourceHydrator, check sources
+				for _, source := range app.Spec.GetSources() {
+					if sourceRevisionHasChanged(source, revision, touchedHead) && sourceUsesURL(source, webURL, repoRegexp) {
+						refreshPaths := path.GetAppRefreshPaths(&app, source)
+						if path.AppFilesHaveChanged(refreshPaths, changedFiles) {
+							needsRefresh = true
+							break
 						}
 					}
 				}
 			}
 
-			for _, source := range app.Spec.GetSources() {
-				if sourceRevisionHasChanged(source, revision, touchedHead) && sourceUsesURL(source, webURL, repoRegexp) {
-					refreshPaths := path.GetAppRefreshPaths(&app, source)
-					if path.AppFilesHaveChanged(refreshPaths, changedFiles) {
-						namespacedAppInterface := a.appClientset.ArgoprojV1alpha1().Applications(app.Namespace)
-						_, err = argo.RefreshApp(namespacedAppInterface, app.Name, v1alpha1.RefreshTypeNormal, true)
-						if err != nil {
-							log.Warnf("Failed to refresh app '%s' for controller reprocessing: %v", app.Name, err)
-							continue
-						}
-						// No need to refresh multiple times if multiple sources match.
-						break
-					} else if change.shaBefore != "" && change.shaAfter != "" {
-						if err := a.storePreviouslyCachedManifests(&app, change, trackingMethod, appInstanceLabelKey, installationID); err != nil {
-							log.Warnf("Failed to store cached manifests of previous revision for app '%s': %v", app.Name, err)
-						}
+			// if the app needs to be refreshed, mark it for refresh by adding annotations
+			if needsRefresh {
+				log.Infof("refreshing app '%s' from webhook", app.Name)
+				if hydrate {
+					log.Infof("webhook trigger refresh app to hydrate '%s'", app.Name)
+				}
+				namespacedAppInterface := a.appClientset.ArgoprojV1alpha1().Applications(app.Namespace)
+				_, err = argo.RefreshApp(namespacedAppInterface, app.Name, v1alpha1.RefreshTypeNormal, hydrate)
+				if err != nil {
+					log.Warnf("Failed to refresh app '%s' from webhook: %v", app.Name, err)
+					continue
+				}
+
+				// store the previously cached manifests
+				if change.shaBefore != "" && change.shaAfter != "" {
+					if err := a.storePreviouslyCachedManifests(&app, change, trackingMethod, appInstanceLabelKey, installationID); err != nil {
+						log.Warnf("Failed to store cached manifests of previous revision for app '%s': %v", app.Name, err)
 					}
 				}
 			}
