@@ -121,17 +121,18 @@ func GetAppRefreshPaths(app *v1alpha1.Application, source v1alpha1.ApplicationSo
 			// if absolute path, add as is
 			if filepath.IsAbs(item) {
 				paths = append(paths, item[1:])
+				continue
+			}
+
+			// if source hydrator configured, use annotation path with the appropriate source base
+			if app.Spec.SourceHydrator != nil {
+				// For drySource, use drySource path (syncSource already returned early above)
+				drySource := app.Spec.SourceHydrator.GetDrySource()
+				paths = append(paths, filepath.Clean(filepath.Join(drySource.Path, item)))
 			} else {
-				// if source hydrator configured, use annotation path with the appropriate source base
-				if app.Spec.SourceHydrator != nil {
-					// For drySource, use drySource path (syncSource already returned early above)
-					drySource := app.Spec.SourceHydrator.GetDrySource()
-					paths = append(paths, filepath.Clean(filepath.Join(drySource.Path, item)))
-				} else {
-					// if source hydrator not configured, use annotation path and default source base (source in params)
-					for _, source := range app.Spec.GetSources() {
-						paths = append(paths, filepath.Clean(filepath.Join(source.Path, item)))
-					}
+				// if source hydrator not configured, use annotation path and default source base (source in params)
+				for _, source := range app.Spec.GetSources() {
+					paths = append(paths, filepath.Clean(filepath.Join(source.Path, item)))
 				}
 			}
 		}
