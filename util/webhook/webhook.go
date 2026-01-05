@@ -415,8 +415,9 @@ func (a *ArgoCDWebhookHandler) HandleEvent(payload any) {
 					continue
 				}
 
-				// store the previously cached manifests
-				if change.shaBefore != "" && change.shaAfter != "" {
+				// store the previously cached manifests when NOT triggering hydration
+				// when hydrating, manifests will be regenerated anyway
+				if !hydrate && change.shaBefore != "" && change.shaAfter != "" {
 					if err := a.storePreviouslyCachedManifests(&app, change, trackingMethod, appInstanceLabelKey, installationID); err != nil {
 						log.Warnf("Failed to store cached manifests of previous revision for app '%s': %v", app.Name, err)
 					}
