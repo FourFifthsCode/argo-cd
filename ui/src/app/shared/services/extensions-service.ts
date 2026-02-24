@@ -1,7 +1,8 @@
 import * as React from 'react';
 import * as minimatch from 'minimatch';
 
-import {Application, ApplicationTree, State} from '../models';
+import {Application, ApplicationTree, ResourceNode, State} from '../models';
+import {hasAncestorMatching} from './extensions-service-helpers';
 
 type ExtensionsEventType = 'resource' | 'systemLevel' | 'appView' | 'statusPanel' | 'topBar';
 type ExtensionsType = ResourceTabExtension | SystemLevelExtension | AppViewExtension | StatusPanelExtension | TopBarActionMenuExt;
@@ -38,8 +39,14 @@ const extensions = {
     topBarActionMenuExts: new Array<TopBarActionMenuExt>()
 };
 
-function registerResourceExtension(component: ExtensionComponent, group: string, kind: string, tabTitle: string, opts?: {icon: string}) {
-    const ext = {component, group, kind, title: tabTitle, icon: opts?.icon};
+function registerResourceExtension(
+    component: ExtensionComponent,
+    group: string,
+    kind: string,
+    tabTitle: string,
+    opts?: {icon?: string; matchOnAncestors?: boolean}
+) {
+    const ext = {component, group, kind, title: tabTitle, icon: opts?.icon, matchOnAncestors: opts?.matchOnAncestors};
     extensions.resourceExtentions.push(ext);
     extensions.eventTarget.emit('resource', ext);
 }
@@ -96,6 +103,7 @@ export interface ResourceTabExtension {
     kind: string;
     component: ExtensionComponent;
     icon?: string;
+    matchOnAncestors?: boolean;
 }
 
 export interface SystemLevelExtension {
@@ -183,9 +191,25 @@ export class ExtensionsService {
         extensions.eventTarget.removeEventListener(evtType, cb);
     }
 
-    public getResourceTabs(group: string, kind: string): ResourceTabExtension[] {
+    public getResourceTabs(
+        group: string,
+        kind: string,
+        tree?: ApplicationTree,
+        selectedNode?: ResourceNode
+    ): ResourceTabExtension[] {
         initLegacyExtensions();
-        const items = extensions.resourceExtentions.filter(extension => minimatch(group, extension.group) && minimatch(kind, extension.kind)).slice();
+        const items = extensions.resourceExtentions.filter(extension => {
+            const directMatch = minimatch(group, extension.group) && minimatch(kind, extension.kind);
+            if (directMatch) return true;
+            if (extension.matchOnAncestors && tree && selectedNode) {
+                try {
+                    return hasAncestorMatching(selectedNode, tree, extension.group, extension.kind);
+                } catch {
+                    return false;
+                }
+            }
+            return false;
+        }).slice();
         return items.sort((a, b) => a.title.localeCompare(b.title));
     }
 
