@@ -233,7 +233,7 @@ export const ResourceDetails = (props: ResourceDetailsProps) => {
         return tabs.concat(extensionTabs);
     };
 
-    const extensions = selectedNode?.kind ? services.extensions.getResourceTabs(selectedNode?.group || '', selectedNode?.kind) : [];
+    const extensions = selectedNode?.kind ? services.extensions.getResourceTabs(selectedNode?.group || '', selectedNode?.kind, tree, selectedNode) : [];
 
     return (
         <div style={{width: '100%', height: '100%'}}>
