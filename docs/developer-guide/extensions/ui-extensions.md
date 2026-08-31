@@ -30,7 +30,7 @@ Resource Tab extensions is an extension that provides an additional tab for the 
 The resource tab extension should be registered using the `extensionsAPI.registerResourceExtension` method:
 
 ```typescript
-registerResourceExtension(component: ExtensionComponent, group: string, kind: string, tabTitle: string)
+registerResourceExtension(component: ExtensionComponent, group: string, kind: string, tabTitle: string, opts?: {icon?: string; matchOnAncestors?: boolean})
 ```
 
 - `component: ExtensionComponent` is a React component that receives the following properties:
@@ -46,6 +46,7 @@ registerResourceExtension(component: ExtensionComponent, group: string, kind: st
 - `tabTitle: string` - the extension tab title.
 - `opts: Object` - additional options:
   - `icon: string` - the class name the represents the icon from the [https://fontawesome.com/](https://fontawesome.com/) library (e.g. 'fa-calendar-alt');
+  - `matchOnAncestors: boolean` - when true, the extension tab also appears when the selected resource is a descendant of a resource matching group/kind (e.g. a Rollout extension will show for Rollout, ReplicaSet, and Pod when viewing any of them).
 
 Below is an example of a resource tab extension:
 
@@ -59,6 +60,23 @@ Below is an example of a resource tab extension:
     "*",
     "*",
     "Nice extension"
+  );
+})(window);
+```
+
+Example with `matchOnAncestors` for an Argo Rollouts extension (shows tab when viewing Rollout, ReplicaSet, or Pod):
+
+```javascript
+((window) => {
+  const component = (props) => {
+    return React.createElement("div", {}, "Rollout Details");
+  };
+  window.extensionsAPI.registerResourceExtension(
+    component,
+    "argoproj.io",
+    "Rollout",
+    "Rollout",
+    { icon: "fa fa-sync-alt", matchOnAncestors: true }
   );
 })(window);
 ```
